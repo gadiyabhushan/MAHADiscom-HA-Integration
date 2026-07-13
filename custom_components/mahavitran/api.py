@@ -3,6 +3,7 @@ import aiohttp
 from typing import Dict, Any, List
 import base64
 from Crypto.Cipher import AES
+import json
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -56,6 +57,15 @@ class MahavitranApiClient:
                             
                         self._token = data.get("token", "dummy_token")
                         account_details = data.get("AccountDetails", [])
+                        
+                        # The API returns AccountDetails as a JSON string inside the JSON response
+                        if isinstance(account_details, str):
+                            try:
+                                account_details = json.loads(account_details)
+                            except json.JSONDecodeError:
+                                _LOGGER.error("Failed to parse AccountDetails JSON string")
+                                account_details = []
+                                
                         return {"success": True, "consumers": account_details}
                     else:
                         return {"success": False, "error": "Invalid username or password"}
