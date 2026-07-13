@@ -1,12 +1,12 @@
 {
   "domain": "mahavitran",
   "name": "Mahavitran Smart Meter",
-  "codeowners": ["@yourname"],
+  "version": "1.0.0",
+  "codeowners": ["@gadiyabhushan1"],
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/yourname/mahavitran_ha",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/yourname/mahavitran_ha/issues",
-  "requirements": ["pycryptodome>=3.20.0"],
-  "version": "1.1.0"
+  "requirements": ["pycryptodome>=3.20.0"]
 }

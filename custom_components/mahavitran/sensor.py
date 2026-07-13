@@ -11,7 +11,7 @@ from homeassistant.helpers.update_coordinator import (
     UpdateFailed,
 )
 
-from .const import DOMAIN, UPDATE_INTERVAL
+from .const import DOMAIN, DEFAULT_UPDATE_INTERVAL_MINUTES
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -19,34 +19,16 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up the Mahavitran sensor platform."""
-    api = hass.data[DOMAIN][entry.entry_id]
-
-    async def async_update_data():
-        """Fetch data from API."""
-        try:
-            return await api.async_get_smart_meter_data()
-        except Exception as err:
-            raise UpdateFailed(f"Error communicating with API: {err}")
-
-    coordinator = DataUpdateCoordinator(
-        hass,
-        _LOGGER,
-        name="mahavitran_smart_meter",
-        update_method=async_update_data,
-        update_interval=UPDATE_INTERVAL,
-    )
-
-    await coordinator.async_config_entry_first_refresh()
+    api = hass.data[DOMAIN][entry.entry_id]["api"]
+    coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
 
     entities = [
         MahavitranStatusSensor(coordinator, entry),
         MahavitranCurrentReadingSensor(coordinator, entry),
-        MahavitranDailyConsumptionSensor(coordinator, entry),
-        MahavitranHourlyConsumptionSensor(coordinator, entry),
-        MahavitranMonthlyConsumptionSensor(coordinator, entry),
     ]
 
     async_add_entities(entities)
+
 
 class MahavitranSensorBase(CoordinatorEntity, SensorEntity):
     """Base class for Mahavitran sensors."""
@@ -101,6 +83,7 @@ class MahavitranCurrentReadingSensor(MahavitranSensorBase):
 
     @property
     def state_class(self):
+        # This is the cumulative meter! This is the ONLY sensor the HA Energy Dashboard actually needs.
         return SensorStateClass.TOTAL_INCREASING
 
     @property
@@ -114,144 +97,3 @@ class MahavitranCurrentReadingSensor(MahavitranSensorBase):
     @property
     def unit_of_measurement(self):
         return "kWh"
-
-
-class MahavitranDailyConsumptionSensor(MahavitranSensorBase):
-    """Sensor for Latest Daily Consumption."""
-
-    @property
-    def unique_id(self):
-        return f"mahavitran_{self._consumer_no}_daily_consumption"
-
-    @property
-    def name(self):
-        return "Latest Daily Consumption"
-
-    @property
-    def device_class(self):
-        return SensorDeviceClass.ENERGY
-
-    @property
-    def state_class(self):
-        return SensorStateClass.TOTAL_INCREASING
-
-    @property
-    def state(self):
-        if self.coordinator.data and self.coordinator.data.get("daily_consumption"):
-            daily_data = self.coordinator.data["daily_consumption"]
-            if isinstance(daily_data, list):
-                for entry in reversed(daily_data):
-                    reading = entry.get("READING")
-                    if reading is not None:
-                        return reading
-        return None
-
-    @property
-    def unit_of_measurement(self):
-        return "kWh"
-
-    @property
-    def extra_state_attributes(self):
-        if self.coordinator.data and self.coordinator.data.get("daily_consumption"):
-            daily_data = self.coordinator.data["daily_consumption"]
-            if isinstance(daily_data, list):
-                for entry in reversed(daily_data):
-                    reading = entry.get("READING")
-                    if reading is not None:
-                        return {"reading_date": entry.get("DATE", "unknown")}
-        return {}
-
-
-class MahavitranHourlyConsumptionSensor(MahavitranSensorBase):
-    """Sensor for Latest Hourly Consumption."""
-
-    @property
-    def unique_id(self):
-        return f"mahavitran_{self._consumer_no}_hourly_consumption"
-
-    @property
-    def name(self):
-        return "Latest Hourly Consumption"
-
-    @property
-    def device_class(self):
-        return SensorDeviceClass.ENERGY
-
-    @property
-    def state_class(self):
-        return SensorStateClass.TOTAL_INCREASING
-
-    @property
-    def state(self):
-        if self.coordinator.data and self.coordinator.data.get("hourly_consumption"):
-            hourly_data = self.coordinator.data["hourly_consumption"]
-            if isinstance(hourly_data, list):
-                for entry in reversed(hourly_data):
-                    reading = entry.get("READING")
-                    if reading is not None:
-                        return reading
-        return None
-
-    @property
-    def unit_of_measurement(self):
-        return "kWh"
-
-    @property
-    def extra_state_attributes(self):
-        if self.coordinator.data and self.coordinator.data.get("hourly_consumption"):
-            hourly_data = self.coordinator.data["hourly_consumption"]
-            if isinstance(hourly_data, list):
-                for entry in reversed(hourly_data):
-                    reading = entry.get("READING")
-                    if reading is not None:
-                        return {"reading_time": entry.get("HOURS", "unknown")}
-        return {}
-
-
-class MahavitranMonthlyConsumptionSensor(MahavitranSensorBase):
-    """Sensor for Latest Monthly Consumption."""
-
-    @property
-    def unique_id(self):
-        return f"mahavitran_{self._consumer_no}_monthly_consumption"
-
-    @property
-    def name(self):
-        return "Latest Monthly Consumption"
-
-    @property
-    def device_class(self):
-        return SensorDeviceClass.ENERGY
-
-    @property
-    def state_class(self):
-        return SensorStateClass.TOTAL_INCREASING
-
-    @property
-    def state(self):
-        if self.coordinator.data and self.coordinator.data.get("monthly_consumption"):
-            monthly_data = self.coordinator.data["monthly_consumption"]
-            if isinstance(monthly_data, list):
-                for entry in reversed(monthly_data):
-                    reading = entry.get("READING")
-                    if reading is not None:
-                        return reading
-        return None
-
-    @property
-    def unit_of_measurement(self):
-        return "kWh"
-
-    @property
-    def extra_state_attributes(self):
-        if self.coordinator.data and self.coordinator.data.get("monthly_consumption"):
-            monthly_data = self.coordinator.data["monthly_consumption"]
-            if isinstance(monthly_data, list):
-                for entry in reversed(monthly_data):
-                    reading = entry.get("READING")
-                    if reading is not None:
-                        return {
-                            "year": entry.get("YEAR", "unknown"),
-                            "month": entry.get("MONTH", "unknown")
-                        }
-        return {}
