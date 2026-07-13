@@ -56,17 +56,31 @@ class MahavitranApiClient:
                             return {"success": False, "error": "Account does not exist"}
                             
                         self._token = data.get("token", "dummy_token")
-                        account_details = data.get("AccountDetails", [])
+                        account_details_raw = data.get("AccountDetails", "{}")
                         
                         # The API returns AccountDetails as a JSON string inside the JSON response
-                        if isinstance(account_details, str):
+                        if isinstance(account_details_raw, str):
                             try:
-                                account_details = json.loads(account_details)
+                                account_details = json.loads(account_details_raw)
                             except json.JSONDecodeError:
                                 _LOGGER.error("Failed to parse AccountDetails JSON string")
-                                account_details = []
+                                account_details = {}
+                        else:
+                            account_details = account_details_raw
+                            
+                        # Extract the ConsumerList array
+                        consumer_list_raw = account_details.get("ConsumerList", [])
+                        
+                        # Map API keys to the ones expected by our config_flow
+                        consumers = []
+                        for c in consumer_list_raw:
+                            consumers.append({
+                                "CONSUMER_NO": c.get("ConNumber", ""),
+                                "CONSUMER_NAME": c.get("ConName", ""),
+                                "AMISP_CODE": c.get("amispCode", "")
+                            })
                                 
-                        return {"success": True, "consumers": account_details}
+                        return {"success": True, "consumers": consumers}
                     else:
                         return {"success": False, "error": "Invalid username or password"}
                 else:
