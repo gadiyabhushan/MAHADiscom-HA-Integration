@@ -1,6 +1,6 @@
 import logging
 import aiohttp
-from typing import Dict, Any
+from typing import Dict, Any, List
 import base64
 from Crypto.Cipher import AES
 
@@ -8,6 +8,7 @@ _LOGGER = logging.getLogger(__name__)
 
 # Base URLs
 MOBILE_APP_URL = "https://mobileapp.mahadiscom.in/App_Requests"
+SMART_METER_URL = "https://mobileapp.mahadiscom.in/consappsmartmeterapi-2.0.0"
 AES_KEY = b"3MKDMK4555232322BB5929E8E033BC69"
 
 class MahavitranApiClientError(Exception):
@@ -17,9 +18,11 @@ class MahavitranAuthError(MahavitranApiClientError):
     """Exception to indicate an authentication error."""
 
 class MahavitranApiClient:
-    def __init__(self, username: str, password: str, session: aiohttp.ClientSession) -> None:
+    def __init__(self, username: str, password: str, consumer_no: str, amisp_code: str, session: aiohttp.ClientSession) -> None:
         self._username = username
         self._password = password
+        self._consumer_no = consumer_no
+        self._amisp_code = amisp_code
         self._session = session
         self._token = None
 
@@ -32,8 +35,21 @@ class MahavitranApiClient:
         encrypted = cipher.encrypt(padded_pwd)
         return base64.b64encode(encrypted).decode('utf-8')
 
-    async def async_login(self) -> bool:
-        """Login to the Mahavitran App API."""
+    def _get_basic_auth(self) -> aiohttp.BasicAuth:
+        """Return HTTP Basic Auth for Smart Meter API endpoints."""
+        return aiohttp.BasicAuth(self._username, self._password)
+
+    def _get_smart_meter_headers(self) -> Dict[str, str]:
+        """Headers required by Smart Meter API."""
+        return {
+            "Client-Os": "ANDROID",
+            "Client-Os-Version": "13",
+            "Client-Version": "169",
+            "Content-Type": "application/json"
+        }
+
+    async def async_login(self) -> Dict[str, Any]:
+        """Login to the Mahavitran App API and return AccountDetails."""
         try:
             encrypted_password = self._encrypt_password(self._password)
             payload = {
@@ -52,14 +68,12 @@ class MahavitranApiClient:
                     data = await response.json()
                     
                     if data.get("ResponseStatus") == "SUCCESS":
-                        # Usually, the token or auth info is returned here. 
-                        # We consider it a success if ResponseStatus is SUCCESS.
                         if data.get("AccountExist") == "NO":
                             _LOGGER.error("Mahavitran Login Failed: Account does not exist.")
                             raise MahavitranAuthError("Account does not exist")
                             
-                        self._token = data.get("token") # Assuming it returns a token
-                        return True
+                        self._token = data.get("token", "dummy_token")
+                        return data.get("AccountDetails", {})
                     else:
                         _LOGGER.error("Mahavitran Login Failed: %s", data)
                         raise MahavitranAuthError("Invalid username or password")
@@ -71,14 +85,61 @@ class MahavitranApiClient:
             _LOGGER.error("Connection to Mahavitran API failed: %s", err)
             raise MahavitranApiClientError(f"Connection error: {err}")
 
-    async def async_get_data(self) -> Dict[str, Any]:
-        """Get data from the API."""
+    async def async_get_smart_meter_data(self) -> Dict[str, Any]:
+        """Get Smart Meter data from the API."""
         if not self._token:
             await self.async_login()
+            
+        if not self._consumer_no or not self._amisp_code:
+             return {"status": "error", "message": "No consumer number or amisp_code provided."}
 
-        # Currently we just return empty data or some dummy data until we decode the fetching endpoints.
-        # Once we have login working perfectly on HA, we'll fetch actual smart meter data.
-        return {
+        # Initialize the result dict
+        result_data = {
             "status": "connected",
-            "message": "Login successful. Meter data endpoints pending implementation."
+            "current_reading": None,
+            "daily_consumption": None
         }
+
+        # 1. Fetch Current Reading
+        try:
+            url = f"{SMART_METER_URL}/{self._amisp_code}/GetCurrentReading/{self._consumer_no}"
+            async with self._session.get(
+                url,
+                auth=self._get_basic_auth(),
+                headers=self._get_smart_meter_headers()
+            ) as response:
+                if response.status == 200:
+                    reading_data = await response.json()
+                    result_data["current_reading"] = reading_data
+                elif response.status == 500:
+                    _LOGGER.warning("GetCurrentReading returned 500 Internal Server Error (possibly closed meter).")
+                else:
+                    _LOGGER.warning("GetCurrentReading failed with status %s", response.status)
+        except Exception as e:
+            _LOGGER.error("Failed to fetch Current Reading: %s", e)
+
+        # 2. Fetch Daily Consumption (for current month, e.g., 07-2026)
+        # For a robust HA integration, we should dynamically format the current month, 
+        # but for now we'll fetch a dummy or leave it empty if the meter is closed.
+        import datetime
+        now = datetime.datetime.now()
+        month_str = now.strftime("%m-%Y")
+        
+        try:
+            url = f"{SMART_METER_URL}/{self._amisp_code}/GetDailyConsumption/{self._consumer_no}/{month_str}"
+            async with self._session.get(
+                url,
+                auth=self._get_basic_auth(),
+                headers=self._get_smart_meter_headers()
+            ) as response:
+                if response.status == 200:
+                    daily_data = await response.json()
+                    result_data["daily_consumption"] = daily_data
+                elif response.status == 500:
+                    _LOGGER.warning("GetDailyConsumption returned 500 Internal Server Error.")
+                else:
+                     _LOGGER.warning("GetDailyConsumption failed with status %s", response.status)
+        except Exception as e:
+            _LOGGER.error("Failed to fetch Daily Consumption: %s", e)
+
+        return result_data
