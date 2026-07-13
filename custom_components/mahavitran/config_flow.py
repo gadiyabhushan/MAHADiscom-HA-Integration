@@ -1,7 +1,7 @@
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
-from .const import DOMAIN, CONF_USERNAME, CONF_PASSWORD, CONF_CONSUMER_NO
+from .const import DOMAIN, CONF_USERNAME, CONF_PASSWORD
 
 class MahavitranConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Mahavitran."""
@@ -18,7 +18,6 @@ class MahavitranConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         data_schema = vol.Schema({
             vol.Required(CONF_USERNAME): str,
             vol.Required(CONF_PASSWORD): str,
-            vol.Required(CONF_CONSUMER_NO, description={"suggested_value": "110013829691"}): str,
         })
 
         return self.async_show_form(
