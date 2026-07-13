@@ -1,0 +1,12 @@
+{
+  "domain": "mahavitran",
+  "name": "Mahavitran Smart Meter",
+  "codeowners": ["@yourname"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/yourname/mahavitran_ha",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/yourname/mahavitran_ha/issues",
+  "requirements": [],
+  "version": "1.0.0"
+}

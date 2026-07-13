@@ -1,0 +1,6 @@
+{
+  "name": "Mahavitran Smart Meter",
+  "render_readme": true,
+  "hacs": "1.6.0",
+  "iot_class": "cloud_polling"
+}
