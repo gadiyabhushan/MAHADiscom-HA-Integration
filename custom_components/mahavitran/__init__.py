@@ -4,7 +4,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import MahavitranApiClient
-from .const import DOMAIN, CONF_USERNAME, CONF_PASSWORD, CONF_CONSUMER_NO
+from .const import DOMAIN, CONF_USERNAME, CONF_PASSWORD
 from .coordinator import MahavitranCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -18,8 +18,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     api = MahavitranApiClient(
         session=session,
         username=entry.data[CONF_USERNAME],
-        password=entry.data[CONF_PASSWORD],
-        consumer_no=entry.data[CONF_CONSUMER_NO]
+        password=entry.data[CONF_PASSWORD]
     )
     
     coordinator = MahavitranCoordinator(hass, api)
