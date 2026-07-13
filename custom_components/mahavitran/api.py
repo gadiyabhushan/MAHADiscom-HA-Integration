@@ -3,6 +3,7 @@ import aiohttp
 from typing import Dict, Any, List
 import base64
 from Crypto.Cipher import AES
+import datetime
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -97,8 +98,12 @@ class MahavitranApiClient:
         result_data = {
             "status": "connected",
             "current_reading": None,
-            "daily_consumption": None
+            "daily_consumption": None,
+            "hourly_consumption": None,
+            "monthly_consumption": None
         }
+
+        now = datetime.datetime.now()
 
         # 1. Fetch Current Reading
         try:
@@ -109,37 +114,59 @@ class MahavitranApiClient:
                 headers=self._get_smart_meter_headers()
             ) as response:
                 if response.status == 200:
-                    reading_data = await response.json()
-                    result_data["current_reading"] = reading_data
-                elif response.status == 500:
-                    _LOGGER.warning("GetCurrentReading returned 500 Internal Server Error (possibly closed meter).")
+                    result_data["current_reading"] = await response.json()
                 else:
-                    _LOGGER.warning("GetCurrentReading failed with status %s", response.status)
+                    _LOGGER.debug("GetCurrentReading failed with status %s", response.status)
         except Exception as e:
-            _LOGGER.error("Failed to fetch Current Reading: %s", e)
+            _LOGGER.debug("Failed to fetch Current Reading: %s", e)
 
-        # 2. Fetch Daily Consumption (for current month, e.g., 07-2026)
-        # For a robust HA integration, we should dynamically format the current month, 
-        # but for now we'll fetch a dummy or leave it empty if the meter is closed.
-        import datetime
-        now = datetime.datetime.now()
-        month_str = now.strftime("%m-%Y")
-        
+        # 2. Fetch Daily Consumption (yyyyMM)
         try:
-            url = f"{SMART_METER_URL}/{self._amisp_code}/GetDailyConsumption/{self._consumer_no}/{month_str}"
+            daily_month = now.strftime("%Y%m")
+            url = f"{SMART_METER_URL}/{self._amisp_code}/GetDailyConsumption/{self._consumer_no}/{daily_month}"
             async with self._session.get(
                 url,
                 auth=self._get_basic_auth(),
                 headers=self._get_smart_meter_headers()
             ) as response:
                 if response.status == 200:
-                    daily_data = await response.json()
-                    result_data["daily_consumption"] = daily_data
-                elif response.status == 500:
-                    _LOGGER.warning("GetDailyConsumption returned 500 Internal Server Error.")
+                    result_data["daily_consumption"] = await response.json()
                 else:
-                     _LOGGER.warning("GetDailyConsumption failed with status %s", response.status)
+                     _LOGGER.debug("GetDailyConsumption failed with status %s", response.status)
         except Exception as e:
-            _LOGGER.error("Failed to fetch Daily Consumption: %s", e)
+            _LOGGER.debug("Failed to fetch Daily Consumption: %s", e)
+
+        # 3. Fetch Hourly Consumption (yyyyMMdd)
+        try:
+            hourly_day = now.strftime("%Y%m%d")
+            url = f"{SMART_METER_URL}/{self._amisp_code}/GetHourlyConsumption/{self._consumer_no}/{hourly_day}"
+            async with self._session.get(
+                url,
+                auth=self._get_basic_auth(),
+                headers=self._get_smart_meter_headers()
+            ) as response:
+                if response.status == 200:
+                    result_data["hourly_consumption"] = await response.json()
+                else:
+                     _LOGGER.debug("GetHourlyConsumption failed with status %s", response.status)
+        except Exception as e:
+            _LOGGER.debug("Failed to fetch Hourly Consumption: %s", e)
+
+        # 4. Fetch Monthly Consumption (yyyy)
+        try:
+            monthly_year = now.strftime("%Y")
+            url = f"{SMART_METER_URL}/{self._amisp_code}/GetMonthlyConsumption/{self._consumer_no}/{monthly_year}"
+            async with self._session.get(
+                url,
+                auth=self._get_basic_auth(),
+                headers=self._get_smart_meter_headers()
+            ) as response:
+                if response.status == 200:
+                    result_data["monthly_consumption"] = await response.json()
+                else:
+                     _LOGGER.debug("GetMonthlyConsumption failed with status %s", response.status)
+        except Exception as e:
+            _LOGGER.debug("Failed to fetch Monthly Consumption: %s", e)
+
 
         return result_data

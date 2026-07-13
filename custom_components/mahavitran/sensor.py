@@ -1,7 +1,7 @@
 import logging
 from datetime import timedelta
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorEntity, SensorDeviceClass, SensorStateClass
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -42,6 +42,8 @@ async def async_setup_entry(
         MahavitranStatusSensor(coordinator, entry),
         MahavitranCurrentReadingSensor(coordinator, entry),
         MahavitranDailyConsumptionSensor(coordinator, entry),
+        MahavitranHourlyConsumptionSensor(coordinator, entry),
+        MahavitranMonthlyConsumptionSensor(coordinator, entry),
     ]
 
     async_add_entities(entities)
@@ -94,12 +96,20 @@ class MahavitranCurrentReadingSensor(MahavitranSensorBase):
         return "Current Reading"
 
     @property
+    def device_class(self):
+        return SensorDeviceClass.ENERGY
+
+    @property
+    def state_class(self):
+        return SensorStateClass.TOTAL_INCREASING
+
+    @property
     def state(self):
         if self.coordinator.data and self.coordinator.data.get("current_reading"):
             reading_data = self.coordinator.data["current_reading"]
             if isinstance(reading_data, dict):
-                return reading_data.get("CURRENT_READING", "unknown")
-        return "unavailable"
+                return reading_data.get("READING")
+        return None
 
     @property
     def unit_of_measurement(self):
@@ -107,7 +117,7 @@ class MahavitranCurrentReadingSensor(MahavitranSensorBase):
 
 
 class MahavitranDailyConsumptionSensor(MahavitranSensorBase):
-    """Sensor for Daily Consumption."""
+    """Sensor for Latest Daily Consumption."""
 
     @property
     def unique_id(self):
@@ -118,17 +128,23 @@ class MahavitranDailyConsumptionSensor(MahavitranSensorBase):
         return "Latest Daily Consumption"
 
     @property
+    def device_class(self):
+        return SensorDeviceClass.ENERGY
+
+    @property
+    def state_class(self):
+        return SensorStateClass.TOTAL_INCREASING
+
+    @property
     def state(self):
         if self.coordinator.data and self.coordinator.data.get("daily_consumption"):
             daily_data = self.coordinator.data["daily_consumption"]
-            # It usually returns a list of dictionaries for the month.
-            # We fetch the latest one with a valid reading.
             if isinstance(daily_data, list):
                 for entry in reversed(daily_data):
                     reading = entry.get("READING")
                     if reading is not None:
                         return reading
-        return "unavailable"
+        return None
 
     @property
     def unit_of_measurement(self):
@@ -136,7 +152,6 @@ class MahavitranDailyConsumptionSensor(MahavitranSensorBase):
 
     @property
     def extra_state_attributes(self):
-        """Return the date of the latest reading as an attribute."""
         if self.coordinator.data and self.coordinator.data.get("daily_consumption"):
             daily_data = self.coordinator.data["daily_consumption"]
             if isinstance(daily_data, list):
@@ -144,4 +159,99 @@ class MahavitranDailyConsumptionSensor(MahavitranSensorBase):
                     reading = entry.get("READING")
                     if reading is not None:
                         return {"reading_date": entry.get("DATE", "unknown")}
+        return {}
+
+
+class MahavitranHourlyConsumptionSensor(MahavitranSensorBase):
+    """Sensor for Latest Hourly Consumption."""
+
+    @property
+    def unique_id(self):
+        return f"mahavitran_{self._consumer_no}_hourly_consumption"
+
+    @property
+    def name(self):
+        return "Latest Hourly Consumption"
+
+    @property
+    def device_class(self):
+        return SensorDeviceClass.ENERGY
+
+    @property
+    def state_class(self):
+        return SensorStateClass.TOTAL_INCREASING
+
+    @property
+    def state(self):
+        if self.coordinator.data and self.coordinator.data.get("hourly_consumption"):
+            hourly_data = self.coordinator.data["hourly_consumption"]
+            if isinstance(hourly_data, list):
+                for entry in reversed(hourly_data):
+                    reading = entry.get("READING")
+                    if reading is not None:
+                        return reading
+        return None
+
+    @property
+    def unit_of_measurement(self):
+        return "kWh"
+
+    @property
+    def extra_state_attributes(self):
+        if self.coordinator.data and self.coordinator.data.get("hourly_consumption"):
+            hourly_data = self.coordinator.data["hourly_consumption"]
+            if isinstance(hourly_data, list):
+                for entry in reversed(hourly_data):
+                    reading = entry.get("READING")
+                    if reading is not None:
+                        return {"reading_time": entry.get("HOURS", "unknown")}
+        return {}
+
+
+class MahavitranMonthlyConsumptionSensor(MahavitranSensorBase):
+    """Sensor for Latest Monthly Consumption."""
+
+    @property
+    def unique_id(self):
+        return f"mahavitran_{self._consumer_no}_monthly_consumption"
+
+    @property
+    def name(self):
+        return "Latest Monthly Consumption"
+
+    @property
+    def device_class(self):
+        return SensorDeviceClass.ENERGY
+
+    @property
+    def state_class(self):
+        return SensorStateClass.TOTAL_INCREASING
+
+    @property
+    def state(self):
+        if self.coordinator.data and self.coordinator.data.get("monthly_consumption"):
+            monthly_data = self.coordinator.data["monthly_consumption"]
+            if isinstance(monthly_data, list):
+                for entry in reversed(monthly_data):
+                    reading = entry.get("READING")
+                    if reading is not None:
+                        return reading
+        return None
+
+    @property
+    def unit_of_measurement(self):
+        return "kWh"
+
+    @property
+    def extra_state_attributes(self):
+        if self.coordinator.data and self.coordinator.data.get("monthly_consumption"):
+            monthly_data = self.coordinator.data["monthly_consumption"]
+            if isinstance(monthly_data, list):
+                for entry in reversed(monthly_data):
+                    reading = entry.get("READING")
+                    if reading is not None:
+                        return {
+                            "year": entry.get("YEAR", "unknown"),
+                            "month": entry.get("MONTH", "unknown")
+                        }
         return {}
