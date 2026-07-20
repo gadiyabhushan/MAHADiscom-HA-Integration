@@ -25,6 +25,7 @@ async def async_setup_entry(
     entities = [
         MahavitranStatusSensor(coordinator, entry),
         MahavitranCurrentReadingSensor(coordinator, entry),
+        MahavitranCumulativeHourlySensor(coordinator, entry),
     ]
 
     async_add_entities(entities)
@@ -92,6 +93,47 @@ class MahavitranCurrentReadingSensor(MahavitranSensorBase):
             reading_data = self.coordinator.data["current_reading"]
             if isinstance(reading_data, dict):
                 return reading_data.get("READING")
+        return None
+
+    @property
+    def unit_of_measurement(self):
+        return "kWh"
+
+
+class MahavitranCumulativeHourlySensor(MahavitranSensorBase):
+    """Sensor for Cumulative Hourly Consumption (sum of today's hourly readings)."""
+
+    @property
+    def unique_id(self):
+        return f"mahavitran_{self._consumer_no}_cumulative_hourly"
+
+    @property
+    def name(self):
+        return "Cumulative Hourly Consumption Today"
+
+    @property
+    def device_class(self):
+        return SensorDeviceClass.ENERGY
+
+    @property
+    def state_class(self):
+        # TOTAL_INCREASING allows HA to track this cumulatively even when it resets to 0 at midnight
+        return SensorStateClass.TOTAL_INCREASING
+
+    @property
+    def state(self):
+        if self.coordinator.data and self.coordinator.data.get("hourly_consumption"):
+            hourly_data = self.coordinator.data["hourly_consumption"]
+            if isinstance(hourly_data, list):
+                total = 0.0
+                for entry in hourly_data:
+                    reading = entry.get("READING")
+                    if reading is not None:
+                        try:
+                            total += float(reading)
+                        except (ValueError, TypeError):
+                            pass
+                return round(total, 2)
         return None
 
     @property

@@ -133,5 +133,22 @@ class MahavitranApiClient:
         except Exception as e:
             _LOGGER.debug(f"Failed to fetch Current Reading: {e}")
             result_data["status"] = "Failed"
+
+        # 2. Fetch Hourly Consumption (yyyyMMdd)
+        try:
+            from datetime import datetime
+            now = datetime.now()
+            hourly_day = now.strftime("%Y%m%d")
+            url = f"{SMART_METER_URL}/{self.amisp_code}/GetHourlyConsumption/{self.consumer_no}/{hourly_day}"
+            async with self._session.get(
+                url,
+                auth=self._get_basic_auth(),
+                headers=self._get_smart_meter_headers(),
+                timeout=10
+            ) as response:
+                if response.status == 200:
+                    result_data["hourly_consumption"] = await response.json()
+        except Exception as e:
+            _LOGGER.debug(f"Failed to fetch Hourly Consumption: {e}")
             
         return result_data
