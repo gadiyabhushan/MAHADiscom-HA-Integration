@@ -9,7 +9,7 @@ _LOGGER = logging.getLogger(__name__)
 
 # Base URLs
 MOBILE_APP_URL = "https://mobileapp.mahadiscom.in/App_Requests"
-SMART_METER_URL = "https://mobileapp.mahadiscom.in/consappsmartmeterapi-2.0.0"
+SMART_METER_URL = "https://mobileapp.mahadiscom.in/consappsmartmeterapi-2.1.0"
 AES_KEY = b"3MKDMK4555232322BB5929E8E033BC69"
 
 class MahavitranApiClient:
@@ -147,7 +147,22 @@ class MahavitranApiClient:
                 timeout=10
             ) as response:
                 if response.status == 200:
-                    result_data["hourly_consumption"] = await response.json()
+                    hourly_data = await response.json()
+                    result_data["hourly_consumption"] = hourly_data
+                    
+                    # Calculate cumulative totals for today
+                    total_import = 0.0
+                    total_export = 0.0
+                    if isinstance(hourly_data, list):
+                        for entry in hourly_data:
+                            try:
+                                total_import += float(entry.get("UNITS_IMPORTED", entry.get("READING", 0.0)))
+                                total_export += float(entry.get("UNITS_EXPORTED", 0.0))
+                            except (ValueError, TypeError):
+                                pass
+                                
+                    result_data["today_import"] = total_import
+                    result_data["today_export"] = total_export
         except Exception as e:
             _LOGGER.debug(f"Failed to fetch Hourly Consumption: {e}")
             
