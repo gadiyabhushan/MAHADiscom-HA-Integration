@@ -26,6 +26,7 @@ async def async_setup_entry(
         MahavitranStatusSensor(coordinator, entry),
         MahavitranCurrentReadingSensor(coordinator, entry),
         MahavitranCumulativeHourlySensor(coordinator, entry),
+        MahavitranHourlyExportSensor(coordinator, entry),
     ]
 
     async_add_entities(entities)
@@ -101,15 +102,15 @@ class MahavitranCurrentReadingSensor(MahavitranSensorBase):
 
 
 class MahavitranCumulativeHourlySensor(MahavitranSensorBase):
-    """Sensor for Cumulative Hourly Consumption (sum of today's hourly readings)."""
+    """Sensor for Cumulative Hourly Consumption (sum of today's hourly import readings)."""
 
     @property
     def unique_id(self):
-        return f"mahavitran_{self._consumer_no}_cumulative_hourly"
+        return f"mahavitran_{self._consumer_no}_cumulative_hourly_import"
 
     @property
     def name(self):
-        return "Cumulative Hourly Consumption Today"
+        return "Cumulative Hourly Import Today"
 
     @property
     def device_class(self):
@@ -122,19 +123,71 @@ class MahavitranCumulativeHourlySensor(MahavitranSensorBase):
 
     @property
     def state(self):
-        if self.coordinator.data and self.coordinator.data.get("hourly_consumption"):
-            hourly_data = self.coordinator.data["hourly_consumption"]
-            if isinstance(hourly_data, list):
-                total = 0.0
-                for entry in hourly_data:
-                    reading = entry.get("READING")
-                    if reading is not None:
-                        try:
-                            total += float(reading)
-                        except (ValueError, TypeError):
-                            pass
-                return round(total, 2)
+        if self.coordinator.data and "today_import" in self.coordinator.data:
+            return round(self.coordinator.data["today_import"], 2)
         return None
+
+    @property
+    def extra_state_attributes(self):
+        """Return the raw hourly data as attributes."""
+        attrs = {}
+        if self.coordinator.data and "hourly_consumption" in self.coordinator.data:
+            hourly_list = self.coordinator.data["hourly_consumption"]
+            if isinstance(hourly_list, list):
+                # Format as a clean dictionary: {"00:00": 0.5, "01:00": 0.8, ...}
+                breakdown = {}
+                for entry in hourly_list:
+                    hour = entry.get("HOUR", "00")
+                    val = float(entry.get("UNITS_IMPORTED", entry.get("READING", 0.0)))
+                    breakdown[f"{hour}:00"] = val
+                attrs["hourly_breakdown"] = breakdown
+        return attrs
+
+    @property
+    def unit_of_measurement(self):
+        return "kWh"
+
+
+class MahavitranHourlyExportSensor(MahavitranSensorBase):
+    """Sensor for Cumulative Hourly Export (sum of today's hourly export readings)."""
+
+    @property
+    def unique_id(self):
+        return f"mahavitran_{self._consumer_no}_cumulative_hourly_export"
+
+    @property
+    def name(self):
+        return "Cumulative Hourly Export Today"
+
+    @property
+    def device_class(self):
+        return SensorDeviceClass.ENERGY
+
+    @property
+    def state_class(self):
+        return SensorStateClass.TOTAL_INCREASING
+
+    @property
+    def state(self):
+        if self.coordinator.data and "today_export" in self.coordinator.data:
+            return round(self.coordinator.data["today_export"], 2)
+        return None
+
+    @property
+    def extra_state_attributes(self):
+        """Return the raw hourly data as attributes."""
+        attrs = {}
+        if self.coordinator.data and "hourly_consumption" in self.coordinator.data:
+            hourly_list = self.coordinator.data["hourly_consumption"]
+            if isinstance(hourly_list, list):
+                # Format as a clean dictionary: {"00:00": 0.5, "01:00": 0.8, ...}
+                breakdown = {}
+                for entry in hourly_list:
+                    hour = entry.get("HOUR", "00")
+                    val = float(entry.get("UNITS_EXPORTED", 0.0))
+                    breakdown[f"{hour}:00"] = val
+                attrs["hourly_breakdown"] = breakdown
+        return attrs
 
     @property
     def unit_of_measurement(self):
