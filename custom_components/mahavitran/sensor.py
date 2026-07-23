@@ -1,5 +1,6 @@
 import logging
-from datetime import timedelta
+from datetime import timedelta, datetime
+from homeassistant.util import dt as dt_util
 
 from homeassistant.components.sensor import SensorEntity, SensorDeviceClass, SensorStateClass
 from homeassistant.core import HomeAssistant
@@ -10,6 +11,8 @@ from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
     UpdateFailed,
 )
+from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
+from homeassistant.components.recorder.statistics import async_import_statistics
 
 from .const import DOMAIN, DEFAULT_UPDATE_INTERVAL_MINUTES
 
@@ -143,6 +146,63 @@ class MahavitranCumulativeHourlySensor(MahavitranSensorBase):
                 attrs["hourly_breakdown"] = breakdown
         return attrs
 
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        super()._handle_coordinator_update()
+        self._inject_historical_statistics()
+
+    def _inject_historical_statistics(self):
+        """Inject historical statistics directly into the recorder database."""
+        if not self.entity_id or not self.hass:
+            return
+            
+        if not self.coordinator.data or "hourly_consumption" not in self.coordinator.data:
+            return
+            
+        hourly_list = self.coordinator.data["hourly_consumption"]
+        if not isinstance(hourly_list, list) or not hourly_list:
+            return
+            
+        metadata = StatisticMetaData(
+            has_mean=False,
+            has_sum=True,
+            name=self.name,
+            source="recorder",
+            statistic_id=self.entity_id,
+            unit_of_measurement="kWh",
+        )
+        
+        running_sum = 0.0
+        statistics = []
+        
+        now = dt_util.now()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        for entry in hourly_list:
+            hour_str = entry.get("HOUR")
+            if hour_str is None:
+                continue
+                
+            try:
+                hour_int = int(hour_str)
+                val = float(entry.get("UNITS_IMPORTED", entry.get("READING", 0.0)))
+                running_sum += val
+                
+                start_time = today_start + timedelta(hours=hour_int)
+                
+                statistics.append(
+                    StatisticData(
+                        start=start_time,
+                        state=running_sum,
+                        sum=running_sum
+                    )
+                )
+            except (ValueError, TypeError):
+                continue
+                
+        if statistics:
+            async_import_statistics(self.hass, metadata, statistics)
+
     @property
     def unit_of_measurement(self):
         return "kWh"
@@ -188,6 +248,63 @@ class MahavitranHourlyExportSensor(MahavitranSensorBase):
                     breakdown[f"{hour}:00"] = val
                 attrs["hourly_breakdown"] = breakdown
         return attrs
+
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        super()._handle_coordinator_update()
+        self._inject_historical_statistics()
+
+    def _inject_historical_statistics(self):
+        """Inject historical statistics directly into the recorder database."""
+        if not self.entity_id or not self.hass:
+            return
+            
+        if not self.coordinator.data or "hourly_consumption" not in self.coordinator.data:
+            return
+            
+        hourly_list = self.coordinator.data["hourly_consumption"]
+        if not isinstance(hourly_list, list) or not hourly_list:
+            return
+            
+        metadata = StatisticMetaData(
+            has_mean=False,
+            has_sum=True,
+            name=self.name,
+            source="recorder",
+            statistic_id=self.entity_id,
+            unit_of_measurement="kWh",
+        )
+        
+        running_sum = 0.0
+        statistics = []
+        
+        now = dt_util.now()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        for entry in hourly_list:
+            hour_str = entry.get("HOUR")
+            if hour_str is None:
+                continue
+                
+            try:
+                hour_int = int(hour_str)
+                val = float(entry.get("UNITS_EXPORTED", 0.0))
+                running_sum += val
+                
+                start_time = today_start + timedelta(hours=hour_int)
+                
+                statistics.append(
+                    StatisticData(
+                        start=start_time,
+                        state=running_sum,
+                        sum=running_sum
+                    )
+                )
+            except (ValueError, TypeError):
+                continue
+                
+        if statistics:
+            async_import_statistics(self.hass, metadata, statistics)
 
     @property
     def unit_of_measurement(self):
