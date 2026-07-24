@@ -166,9 +166,9 @@ class MahavitranCumulativeHourlySensor(MahavitranSensorBase):
         metadata = StatisticMetaData(
             has_mean=False,
             has_sum=True,
-            name=self.name,
-            source="recorder",
-            statistic_id=self.entity_id,
+            name=f"Mahavitran Import Historical ({self._consumer_no})",
+            source=DOMAIN,
+            statistic_id=f"{DOMAIN}:import_historical_{self._consumer_no}",
             unit_of_measurement="kWh",
         )
         
@@ -269,9 +269,9 @@ class MahavitranHourlyExportSensor(MahavitranSensorBase):
         metadata = StatisticMetaData(
             has_mean=False,
             has_sum=True,
-            name=self.name,
-            source="recorder",
-            statistic_id=self.entity_id,
+            name=f"Mahavitran Export Historical ({self._consumer_no})",
+            source=DOMAIN,
+            statistic_id=f"{DOMAIN}:export_historical_{self._consumer_no}",
             unit_of_measurement="kWh",
         )
         
