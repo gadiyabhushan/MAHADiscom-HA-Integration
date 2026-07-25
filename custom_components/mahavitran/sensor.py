@@ -189,8 +189,7 @@ class MahavitranCumulativeHourlySensor(MahavitranSensorBase):
                 running_sum += val
                 
                 local_hour = today_start + timedelta(hours=hour_int)
-                utc_hour = dt_util.as_utc(local_hour)
-                start_time = utc_hour.replace(minute=0, second=0, microsecond=0)
+                start_time = local_hour
                 
                 statistics.append(
                     StatisticData(
@@ -294,8 +293,7 @@ class MahavitranHourlyExportSensor(MahavitranSensorBase):
                 running_sum += val
                 
                 local_hour = today_start + timedelta(hours=hour_int)
-                utc_hour = dt_util.as_utc(local_hour)
-                start_time = utc_hour.replace(minute=0, second=0, microsecond=0)
+                start_time = local_hour
                 
                 statistics.append(
                     StatisticData(
