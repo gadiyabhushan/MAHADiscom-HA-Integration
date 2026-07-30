@@ -12,7 +12,7 @@ from homeassistant.helpers.update_coordinator import (
     UpdateFailed,
 )
 from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
-from homeassistant.components.recorder.statistics import async_import_statistics
+from homeassistant.components.recorder.statistics import async_add_external_statistics
 
 from .const import DOMAIN, DEFAULT_UPDATE_INTERVAL_MINUTES
 
@@ -189,7 +189,8 @@ class MahavitranCumulativeHourlySensor(MahavitranSensorBase):
                 running_sum += val
                 
                 local_hour = today_start + timedelta(hours=hour_int)
-                start_time = local_hour
+                utc_hour = dt_util.as_utc(local_hour)
+                start_time = utc_hour.replace(minute=0, second=0, microsecond=0)
                 
                 statistics.append(
                     StatisticData(
@@ -202,7 +203,7 @@ class MahavitranCumulativeHourlySensor(MahavitranSensorBase):
                 continue
                 
         if statistics:
-            async_import_statistics(self.hass, metadata, statistics)
+            async_add_external_statistics(self.hass, metadata, statistics)
 
     @property
     def unit_of_measurement(self):
@@ -293,7 +294,8 @@ class MahavitranHourlyExportSensor(MahavitranSensorBase):
                 running_sum += val
                 
                 local_hour = today_start + timedelta(hours=hour_int)
-                start_time = local_hour
+                utc_hour = dt_util.as_utc(local_hour)
+                start_time = utc_hour.replace(minute=0, second=0, microsecond=0)
                 
                 statistics.append(
                     StatisticData(
@@ -306,7 +308,7 @@ class MahavitranHourlyExportSensor(MahavitranSensorBase):
                 continue
                 
         if statistics:
-            async_import_statistics(self.hass, metadata, statistics)
+            async_add_external_statistics(self.hass, metadata, statistics)
 
     @property
     def unit_of_measurement(self):

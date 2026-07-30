@@ -1,0 +1,2 @@
+from homeassistant.components.recorder.models import StatisticMetaData
+print(StatisticMetaData.__annotations__)
