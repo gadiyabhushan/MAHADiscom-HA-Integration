@@ -12,7 +12,7 @@ from homeassistant.helpers.update_coordinator import (
     UpdateFailed,
 )
 from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
-from homeassistant.components.recorder.statistics import async_add_external_statistics
+from homeassistant.components.recorder.statistics import async_import_statistics
 
 from .const import DOMAIN, DEFAULT_UPDATE_INTERVAL_MINUTES
 
@@ -166,9 +166,9 @@ class MahavitranCumulativeHourlySensor(MahavitranSensorBase):
         metadata = StatisticMetaData(
             has_mean=False,
             has_sum=True,
-            name=f"Mahavitran Import Historical ({self._consumer_no})",
-            source=DOMAIN,
-            statistic_id=f"{DOMAIN}:import_historical_{self._consumer_no}",
+            name=self.name,
+            source="recorder",
+            statistic_id=self.entity_id,
             unit_of_measurement="kWh",
         )
         
@@ -203,7 +203,7 @@ class MahavitranCumulativeHourlySensor(MahavitranSensorBase):
                 continue
                 
         if statistics:
-            async_add_external_statistics(self.hass, metadata, statistics)
+            async_import_statistics(self.hass, metadata, statistics)
 
     @property
     def unit_of_measurement(self):
@@ -271,9 +271,9 @@ class MahavitranHourlyExportSensor(MahavitranSensorBase):
         metadata = StatisticMetaData(
             has_mean=False,
             has_sum=True,
-            name=f"Mahavitran Export Historical ({self._consumer_no})",
-            source=DOMAIN,
-            statistic_id=f"{DOMAIN}:export_historical_{self._consumer_no}",
+            name=self.name,
+            source="recorder",
+            statistic_id=self.entity_id,
             unit_of_measurement="kWh",
         )
         
@@ -308,7 +308,7 @@ class MahavitranHourlyExportSensor(MahavitranSensorBase):
                 continue
                 
         if statistics:
-            async_add_external_statistics(self.hass, metadata, statistics)
+            async_import_statistics(self.hass, metadata, statistics)
 
     @property
     def unit_of_measurement(self):
