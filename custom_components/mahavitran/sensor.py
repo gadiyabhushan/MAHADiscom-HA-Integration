@@ -216,14 +216,15 @@ class MahavitranImportHistoricalSensor(MahavitranSensorBase):
 
     @property
     def state_class(self):
-        return SensorStateClass.TOTAL
+        return SensorStateClass.TOTAL_INCREASING
 
     @property
     def state(self):
-        # We always return None. This ensures the native HA statistics compiler completely ignores this entity
-        # and doesn't generate its own conflicting statistic buckets, allowing us to have 100% control
-        # over the statistic through async_import_statistics.
-        return None
+        # Return 0.0 instead of None to prevent 'Unknown' state in HA.
+        # Since this value never increases, HA's native compiler records 0 usage.
+        # This allows our backdated async_import_statistics to have 100% control
+        # over the actual hourly consumption shown in the Energy Dashboard!
+        return 0.0
 
     @property
     def unit_of_measurement(self):
@@ -309,11 +310,11 @@ class MahavitranExportHistoricalSensor(MahavitranSensorBase):
 
     @property
     def state_class(self):
-        return SensorStateClass.TOTAL
+        return SensorStateClass.TOTAL_INCREASING
 
     @property
     def state(self):
-        return None
+        return 0.0
 
     @property
     def unit_of_measurement(self):

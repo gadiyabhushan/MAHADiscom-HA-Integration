@@ -1,7 +1,7 @@
 {
   "domain": "mahavitran",
   "name": "Mahavitran Smart Meter",
-  "version": "1.4.8",
+  "version": "1.4.9",
   "codeowners": ["@gadiyabhushan"],
   "config_flow": true,
   "dependencies": ["recorder"],
