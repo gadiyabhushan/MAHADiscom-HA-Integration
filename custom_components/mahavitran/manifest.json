@@ -1,12 +1,19 @@
 {
-  "domain": "mahavitran",
-  "name": "Mahavitran Smart Meter",
-  "version": "1.4.9",
-  "codeowners": ["@gadiyabhushan"],
-  "config_flow": true,
-  "dependencies": ["recorder"],
-  "documentation": "https://github.com/gadiyabhushan/MAHADiscom-HA-Integration",
-  "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/yourname/mahavitran_ha/issues",
-  "requirements": ["pycryptodome>=3.15.0", "aiohttp>=3.8.1"]
+    "domain": "mahavitran",
+    "name": "Mahavitran Smart Meter",
+    "version": "1.5.0",
+    "codeowners": [
+        "@gadiyabhushan"
+    ],
+    "config_flow": true,
+    "dependencies": [
+        "recorder"
+    ],
+    "documentation": "https://github.com/gadiyabhushan/MAHADiscom-HA-Integration",
+    "iot_class": "cloud_polling",
+    "issue_tracker": "https://github.com/yourname/mahavitran_ha/issues",
+    "requirements": [
+        "pycryptodome>=3.15.0",
+        "aiohttp>=3.8.1"
+    ]
 }

@@ -12,7 +12,7 @@ from homeassistant.helpers.update_coordinator import (
     UpdateFailed,
 )
 from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
-from homeassistant.components.recorder.statistics import async_import_statistics
+from homeassistant.components.recorder.statistics import async_import_statistics, statistics_during_period
 
 from .const import DOMAIN, DEFAULT_UPDATE_INTERVAL_MINUTES
 
@@ -233,9 +233,10 @@ class MahavitranImportHistoricalSensor(MahavitranSensorBase):
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
         super()._handle_coordinator_update()
-        self._inject_historical_statistics()
+        if hasattr(self.hass, "async_create_task"):
+            self.hass.async_create_task(self._async_inject_historical_statistics())
 
-    def _inject_historical_statistics(self):
+    async def _async_inject_historical_statistics(self):
         """Inject historical statistics directly into the recorder database."""
         if not self.entity_id or not self.hass:
             return
@@ -256,14 +257,29 @@ class MahavitranImportHistoricalSensor(MahavitranSensorBase):
             unit_of_measurement="kWh",
         )
         
-        # Reset the sum every day just like the API does.
-        # Since this entity is completely isolated from the native compiler, the Energy Dashboard
-        # natively understands this daily reset (sum dropping to 0) and computes hourly usage flawlessly.
-        running_sum = 0.0
-        statistics = []
-        
         now = dt_util.now()
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        # Fetch the lifetime cumulative sum exactly at the end of yesterday
+        stat_history = await self.hass.async_add_executor_job(
+            statistics_during_period,
+            self.hass,
+            today_start - timedelta(days=30),
+            today_start,
+            {self.entity_id},
+            "hour",
+            None,
+            {"sum"}
+        )
+        
+        base_sum = 0.0
+        if stat_history and self.entity_id in stat_history and stat_history[self.entity_id]:
+            last_stat = stat_history[self.entity_id][-1]
+            if "sum" in last_stat and last_stat["sum"] is not None:
+                base_sum = float(last_stat["sum"])
+                
+        running_sum = base_sum
+        statistics = []
         
         for entry in hourly_list:
             hour_str = entry.get("HOUR")
@@ -323,9 +339,10 @@ class MahavitranExportHistoricalSensor(MahavitranSensorBase):
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
         super()._handle_coordinator_update()
-        self._inject_historical_statistics()
+        if hasattr(self.hass, "async_create_task"):
+            self.hass.async_create_task(self._async_inject_historical_statistics())
 
-    def _inject_historical_statistics(self):
+    async def _async_inject_historical_statistics(self):
         """Inject historical statistics directly into the recorder database."""
         if not self.entity_id or not self.hass:
             return
@@ -346,11 +363,29 @@ class MahavitranExportHistoricalSensor(MahavitranSensorBase):
             unit_of_measurement="kWh",
         )
         
-        running_sum = 0.0
-        statistics = []
-        
         now = dt_util.now()
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        # Fetch the lifetime cumulative sum exactly at the end of yesterday
+        stat_history = await self.hass.async_add_executor_job(
+            statistics_during_period,
+            self.hass,
+            today_start - timedelta(days=30),
+            today_start,
+            {self.entity_id},
+            "hour",
+            None,
+            {"sum"}
+        )
+        
+        base_sum = 0.0
+        if stat_history and self.entity_id in stat_history and stat_history[self.entity_id]:
+            last_stat = stat_history[self.entity_id][-1]
+            if "sum" in last_stat and last_stat["sum"] is not None:
+                base_sum = float(last_stat["sum"])
+                
+        running_sum = base_sum
+        statistics = []
         
         for entry in hourly_list:
             hour_str = entry.get("HOUR")
