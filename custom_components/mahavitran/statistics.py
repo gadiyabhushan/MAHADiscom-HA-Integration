@@ -61,6 +61,36 @@ class MahavitranStatisticsManager:
             _LOGGER.debug("Could not fetch last statistics for %s: %s", stat_id, e)
         return default_seed
 
+    async def async_initialize_metadata(self) -> None:
+        """Register the statistic metadata immediately so it appears in the Energy Dashboard dropdown."""
+        import_entity_id = f"sensor.mahavitran_{self.consumer_no}_import_historical_sensor"
+        export_entity_id = f"sensor.mahavitran_{self.consumer_no}_export_historical_sensor"
+
+        import_meta = StatisticMetaData(
+            has_mean=False,
+            has_sum=True,
+            name="Mahavitran Import Historical (Dashboard)",
+            source="recorder",
+            statistic_id=import_entity_id,
+            unit_of_measurement="kWh",
+        )
+
+        export_meta = StatisticMetaData(
+            has_mean=False,
+            has_sum=True,
+            name="Mahavitran Export Historical (Dashboard)",
+            source="recorder",
+            statistic_id=export_entity_id,
+            unit_of_measurement="kWh",
+        )
+
+        try:
+            async_import_statistics(self.hass, import_meta, [])
+            async_import_statistics(self.hass, export_meta, [])
+            _LOGGER.debug("Registered statistics metadata for %s and %s", import_entity_id, export_entity_id)
+        except Exception as err:
+            _LOGGER.debug("Error initializing statistic metadata: %s", err)
+
     async def async_inject_daily_data(
         self, days_data: List[Dict[str, Any]], current_reading: float = 0.0
     ) -> Dict[str, float]:

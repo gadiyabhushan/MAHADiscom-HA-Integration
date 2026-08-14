@@ -1,4 +1,7 @@
 
+## v2.1.1
+- **CRITICAL FIX**: Fixed AttributeError on startup by restoring the missing `async_initialize_metadata` method inside the statistics manager.
+
 ## v2.1.0
 - **COMPLETE STABILITY REWRITE**:
   - Restored `Mahavitran Import Historical (Dashboard)` and `Mahavitran Export Historical (Dashboard)` as live, active Home Assistant sensors seeded with lifetime cumulative sums.
