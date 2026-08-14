@@ -61,6 +61,36 @@ class MahavitranStatisticsManager:
             _LOGGER.debug("Could not fetch last statistics for %s: %s", stat_id, e)
         return 0.0
 
+    async def async_initialize_metadata(self) -> None:
+        """Register the external statistic metadata immediately so it appears in the Energy Dashboard dropdown."""
+        import_stat_id = f"{DOMAIN}:import_{self.consumer_no}"
+        export_stat_id = f"{DOMAIN}:export_{self.consumer_no}"
+
+        import_meta = StatisticMetaData(
+            has_mean=False,
+            has_sum=True,
+            name=f"Mahavitran Grid Import ({self.consumer_no})",
+            source=DOMAIN,
+            statistic_id=import_stat_id,
+            unit_of_measurement="kWh",
+        )
+
+        export_meta = StatisticMetaData(
+            has_mean=False,
+            has_sum=True,
+            name=f"Mahavitran Grid Export ({self.consumer_no})",
+            source=DOMAIN,
+            statistic_id=export_stat_id,
+            unit_of_measurement="kWh",
+        )
+
+        try:
+            async_add_external_statistics(self.hass, import_meta, [])
+            async_add_external_statistics(self.hass, export_meta, [])
+            _LOGGER.debug("Registered external statistics metadata for %s and %s", import_stat_id, export_stat_id)
+        except Exception as err:
+            _LOGGER.debug("Error initializing external statistic metadata: %s", err)
+
     async def async_inject_daily_data(
         self, days_data: List[Dict[str, Any]]
     ) -> None:
@@ -73,6 +103,8 @@ class MahavitranStatisticsManager:
             {"date": "20260814", "hourly": [...]}
         ]
         """
+        await self.async_initialize_metadata()
+
         if not days_data:
             return
 

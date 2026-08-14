@@ -29,6 +29,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     api = MahavitranApiClient(username, password, session, consumer_no, amisp_code)
     stats_manager = MahavitranStatisticsManager(hass, consumer_no)
 
+    # Immediately register external statistic metadata so it is available in the Energy Dashboard dropdown
+    await stats_manager.async_initialize_metadata()
+
     # We import here to avoid circular imports
     from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
     
