@@ -24,6 +24,8 @@ async def async_setup_entry(
         MahavitranCurrentReadingSensor(coordinator, entry),
         MahavitranCumulativeHourlySensor(coordinator, entry),
         MahavitranHourlyExportSensor(coordinator, entry),
+        MahavitranImportHistoricalSensor(coordinator, entry),
+        MahavitranExportHistoricalSensor(coordinator, entry),
     ]
 
     async_add_entities(entities)
@@ -186,3 +188,70 @@ class MahavitranHourlyExportSensor(MahavitranSensorBase):
     def unit_of_measurement(self):
         return "kWh"
 
+
+class MahavitranImportHistoricalSensor(MahavitranSensorBase):
+    """Sensor for Mahavitran Import Historical Data (Dashboard)."""
+
+    @property
+    def unique_id(self):
+        return f"mahavitran_{self._consumer_no}_import_historical_sensor"
+
+    @property
+    def name(self):
+        return "Mahavitran Import Historical (Dashboard)"
+
+    @property
+    def device_class(self):
+        return SensorDeviceClass.ENERGY
+
+    @property
+    def state_class(self):
+        return SensorStateClass.TOTAL_INCREASING
+
+    @property
+    def state(self):
+        if self.coordinator.data and "cumulative_import_sum" in self.coordinator.data:
+            val = self.coordinator.data["cumulative_import_sum"]
+            if val is not None and val > 0:
+                return round(val, 2)
+        if self.coordinator.data and self.coordinator.data.get("current_reading"):
+            reading_data = self.coordinator.data["current_reading"]
+            if isinstance(reading_data, dict):
+                return reading_data.get("READING")
+        return None
+
+    @property
+    def unit_of_measurement(self):
+        return "kWh"
+
+
+class MahavitranExportHistoricalSensor(MahavitranSensorBase):
+    """Sensor for Mahavitran Export Historical Data (Dashboard)."""
+
+    @property
+    def unique_id(self):
+        return f"mahavitran_{self._consumer_no}_export_historical_sensor"
+
+    @property
+    def name(self):
+        return "Mahavitran Export Historical (Dashboard)"
+
+    @property
+    def device_class(self):
+        return SensorDeviceClass.ENERGY
+
+    @property
+    def state_class(self):
+        return SensorStateClass.TOTAL_INCREASING
+
+    @property
+    def state(self):
+        if self.coordinator.data and "cumulative_export_sum" in self.coordinator.data:
+            val = self.coordinator.data["cumulative_export_sum"]
+            if val is not None:
+                return round(val, 2)
+        return 0.0
+
+    @property
+    def unit_of_measurement(self):
+        return "kWh"

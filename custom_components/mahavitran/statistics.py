@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Dict, Any, List
 
 from homeassistant.core import HomeAssistant
@@ -7,7 +7,7 @@ from homeassistant.util import dt as dt_util
 from homeassistant.helpers.storage import Store
 from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
 from homeassistant.components.recorder.statistics import (
-    async_add_external_statistics,
+    async_import_statistics,
     get_last_statistics,
 )
 
@@ -20,7 +20,7 @@ STORAGE_KEY_PREFIX = "mahavitran_stats_"
 
 
 class MahavitranStatisticsManager:
-    """Manages continuous external statistics for Mahavitran smart meters."""
+    """Manages continuous historical statistics for Mahavitran smart meters."""
 
     def __init__(self, hass: HomeAssistant, consumer_no: str) -> None:
         self.hass = hass
@@ -47,7 +47,7 @@ class MahavitranStatisticsManager:
         """Persist stats base data."""
         await self._store.async_save(self._data)
 
-    async def _get_initial_seed(self, stat_id: str) -> float:
+    async def _get_initial_seed(self, stat_id: str, default_seed: float = 0.0) -> float:
         """Get the last known statistic sum from recorder if storage is empty."""
         try:
             last_stats = await self.hass.async_add_executor_job(
@@ -55,81 +55,45 @@ class MahavitranStatisticsManager:
             )
             if last_stats and stat_id in last_stats and last_stats[stat_id]:
                 val = last_stats[stat_id][0].get("sum")
-                if val is not None:
+                if val is not None and float(val) > 0:
                     return float(val)
         except Exception as e:
             _LOGGER.debug("Could not fetch last statistics for %s: %s", stat_id, e)
-        return 0.0
-
-    async def async_initialize_metadata(self) -> None:
-        """Register the external statistic metadata immediately so it appears in the Energy Dashboard dropdown."""
-        import_stat_id = f"{DOMAIN}:import_{self.consumer_no}"
-        export_stat_id = f"{DOMAIN}:export_{self.consumer_no}"
-
-        import_meta = StatisticMetaData(
-            has_mean=False,
-            has_sum=True,
-            name=f"Mahavitran Grid Import ({self.consumer_no})",
-            source=DOMAIN,
-            statistic_id=import_stat_id,
-            unit_of_measurement="kWh",
-        )
-
-        export_meta = StatisticMetaData(
-            has_mean=False,
-            has_sum=True,
-            name=f"Mahavitran Grid Export ({self.consumer_no})",
-            source=DOMAIN,
-            statistic_id=export_stat_id,
-            unit_of_measurement="kWh",
-        )
-
-        try:
-            async_add_external_statistics(self.hass, import_meta, [])
-            async_add_external_statistics(self.hass, export_meta, [])
-            _LOGGER.debug("Registered external statistics metadata for %s and %s", import_stat_id, export_stat_id)
-        except Exception as err:
-            _LOGGER.debug("Error initializing external statistic metadata: %s", err)
+        return default_seed
 
     async def async_inject_daily_data(
-        self, days_data: List[Dict[str, Any]]
-    ) -> None:
+        self, days_data: List[Dict[str, Any]], current_reading: float = 0.0
+    ) -> Dict[str, float]:
         """
         Process and inject hourly statistics for given dates in chronological order.
         
-        days_data is a list of dicts:
-        [
-            {"date": "20260813", "hourly": [...]},
-            {"date": "20260814", "hourly": [...]}
-        ]
+        Returns dict with current cumulative import and export sums.
         """
-        await self.async_initialize_metadata()
-
-        if not days_data:
-            return
-
         await self._async_load()
 
-        import_stat_id = f"{DOMAIN}:import_{self.consumer_no}"
-        export_stat_id = f"{DOMAIN}:export_{self.consumer_no}"
+        import_entity_id = f"sensor.mahavitran_{self.consumer_no}_import_historical_sensor"
+        export_entity_id = f"sensor.mahavitran_{self.consumer_no}_export_historical_sensor"
 
         import_meta = StatisticMetaData(
             has_mean=False,
             has_sum=True,
-            name=f"Mahavitran Grid Import ({self.consumer_no})",
-            source=DOMAIN,
-            statistic_id=import_stat_id,
+            name="Mahavitran Import Historical (Dashboard)",
+            source="recorder",
+            statistic_id=import_entity_id,
             unit_of_measurement="kWh",
         )
 
         export_meta = StatisticMetaData(
             has_mean=False,
             has_sum=True,
-            name=f"Mahavitran Grid Export ({self.consumer_no})",
-            source=DOMAIN,
-            statistic_id=export_stat_id,
+            name="Mahavitran Export Historical (Dashboard)",
+            source="recorder",
+            statistic_id=export_entity_id,
             unit_of_measurement="kWh",
         )
+
+        if not days_data:
+            return {"import_sum": 0.0, "export_sum": 0.0}
 
         import_stats: List[StatisticData] = []
         export_stats: List[StatisticData] = []
@@ -138,6 +102,9 @@ class MahavitranStatisticsManager:
 
         # Sort dates in ascending order
         sorted_days = sorted(days_data, key=lambda d: d.get("date", ""))
+
+        last_import_sum = 0.0
+        last_export_sum = 0.0
 
         for day_entry in sorted_days:
             date_str = day_entry.get("date")
@@ -153,9 +120,11 @@ class MahavitranStatisticsManager:
                 continue
 
             # Ensure we have a continuous baseline sum for this date
-            for kind, stat_id in [("import", import_stat_id), ("export", export_stat_id)]:
+            for kind, stat_id, seed_fallback in [
+                ("import", import_entity_id, current_reading),
+                ("export", export_entity_id, 0.0),
+            ]:
                 if date_str not in self._data["day_base_sums"][kind]:
-                    # Find the most recent previous date's closing sum
                     prev_dates = sorted([d for d in self._data["day_base_sums"][kind].keys() if d < date_str])
                     if prev_dates:
                         last_prev_date = prev_dates[-1]
@@ -163,7 +132,7 @@ class MahavitranStatisticsManager:
                         prev_total = self._data["day_totals"][kind].get(last_prev_date, 0.0)
                         self._data["day_base_sums"][kind][date_str] = prev_base + prev_total
                     else:
-                        seed = await self._get_initial_seed(stat_id)
+                        seed = await self._get_initial_seed(stat_id, seed_fallback)
                         self._data["day_base_sums"][kind][date_str] = seed
 
             # Parse and sort hourly items for this date
@@ -185,8 +154,7 @@ class MahavitranStatisticsManager:
             for h, imp_val, _ in parsed_hours:
                 imp_running += imp_val
                 imp_day_total += imp_val
-                
-                # Hour 1 corresponds to 00:00 - 01:00 (start at 00:00)
+
                 start_h = (h - 1) if (1 <= h <= 24) else h
                 start_local = datetime(year, month, day, start_h, 0, 0, tzinfo=local_tz)
                 start_utc = dt_util.as_utc(start_local)
@@ -194,11 +162,12 @@ class MahavitranStatisticsManager:
                 import_stats.append(
                     StatisticData(
                         start=start_utc,
-                        state=round(imp_val, 4),
+                        state=round(imp_running, 4),
                         sum=round(imp_running, 4),
                     )
                 )
             self._data["day_totals"]["import"][date_str] = imp_day_total
+            last_import_sum = imp_running
 
             # Process Export statistics
             exp_running = self._data["day_base_sums"]["export"][date_str]
@@ -214,20 +183,23 @@ class MahavitranStatisticsManager:
                 export_stats.append(
                     StatisticData(
                         start=start_utc,
-                        state=round(exp_val, 4),
+                        state=round(exp_running, 4),
                         sum=round(exp_running, 4),
                     )
                 )
             self._data["day_totals"]["export"][date_str] = exp_day_total
+            last_export_sum = exp_running
 
         # Save base sums for future updates
         await self._async_save()
 
-        # Inject external statistics into recorder
+        # Inject statistics into recorder database
         if import_stats:
-            async_add_external_statistics(self.hass, import_meta, import_stats)
-            _LOGGER.debug("Injected %d import statistics for %s", len(import_stats), import_stat_id)
+            async_import_statistics(self.hass, import_meta, import_stats)
+            _LOGGER.debug("Injected %d import statistics for %s", len(import_stats), import_entity_id)
 
         if export_stats:
-            async_add_external_statistics(self.hass, export_meta, export_stats)
-            _LOGGER.debug("Injected %d export statistics for %s", len(export_stats), export_stat_id)
+            async_import_statistics(self.hass, export_meta, export_stats)
+            _LOGGER.debug("Injected %d export statistics for %s", len(export_stats), export_entity_id)
+
+        return {"import_sum": last_import_sum, "export_sum": last_export_sum}

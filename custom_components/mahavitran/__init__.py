@@ -39,9 +39,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         """Fetch data from API and update statistics."""
         try:
             data = await api.async_get_smart_meter_data()
+            current_reading = 0.0
+            if data and isinstance(data.get("current_reading"), dict):
+                try:
+                    current_reading = float(data["current_reading"].get("READING", 0.0))
+                except (ValueError, TypeError):
+                    pass
+
             if data and "days_data" in data and data["days_data"]:
                 try:
-                    await stats_manager.async_inject_daily_data(data["days_data"])
+                    sums = await stats_manager.async_inject_daily_data(data["days_data"], current_reading)
+                    data["cumulative_import_sum"] = sums.get("import_sum", 0.0)
+                    data["cumulative_export_sum"] = sums.get("export_sum", 0.0)
                 except Exception as ex:
                     _LOGGER.error("Failed to inject historical statistics: %s", ex, exc_info=True)
             return data
