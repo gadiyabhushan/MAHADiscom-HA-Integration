@@ -5,6 +5,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import MahavitranApiClient
+from .statistics import MahavitranStatisticsManager
 from .const import DOMAIN, CONF_USERNAME, CONF_PASSWORD, CONF_CONSUMER_NO, CONF_AMISP_CODE, CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL_MINUTES
 
 _LOGGER = logging.getLogger(__name__)
@@ -26,14 +27,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     session = async_get_clientsession(hass)
     api = MahavitranApiClient(username, password, session, consumer_no, amisp_code)
+    stats_manager = MahavitranStatisticsManager(hass, consumer_no)
 
     # We import here to avoid circular imports
     from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
     
     async def async_update_data():
-        """Fetch data from API."""
+        """Fetch data from API and update statistics."""
         try:
-            return await api.async_get_smart_meter_data()
+            data = await api.async_get_smart_meter_data()
+            if data and "days_data" in data and data["days_data"]:
+                try:
+                    await stats_manager.async_inject_daily_data(data["days_data"])
+                except Exception as ex:
+                    _LOGGER.error("Failed to inject historical statistics: %s", ex, exc_info=True)
+            return data
         except Exception as err:
             raise UpdateFailed(f"Error communicating with API: {err}")
 
@@ -49,7 +57,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data[DOMAIN][entry.entry_id] = {
         "api": api,
-        "coordinator": coordinator
+        "coordinator": coordinator,
+        "stats_manager": stats_manager,
     }
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

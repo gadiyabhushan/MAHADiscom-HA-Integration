@@ -1,6 +1,4 @@
 import logging
-from datetime import timedelta, datetime
-from homeassistant.util import dt as dt_util
 
 from homeassistant.components.sensor import SensorEntity, SensorDeviceClass, SensorStateClass
 from homeassistant.core import HomeAssistant
@@ -9,12 +7,9 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
     DataUpdateCoordinator,
-    UpdateFailed,
 )
-from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
-from homeassistant.components.recorder.statistics import async_import_statistics, statistics_during_period
 
-from .const import DOMAIN, DEFAULT_UPDATE_INTERVAL_MINUTES
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -22,7 +17,6 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up the Mahavitran sensor platform."""
-    api = hass.data[DOMAIN][entry.entry_id]["api"]
     coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
 
     entities = [
@@ -30,8 +24,6 @@ async def async_setup_entry(
         MahavitranCurrentReadingSensor(coordinator, entry),
         MahavitranCumulativeHourlySensor(coordinator, entry),
         MahavitranHourlyExportSensor(coordinator, entry),
-        MahavitranImportHistoricalSensor(coordinator, entry),
-        MahavitranExportHistoricalSensor(coordinator, entry),
     ]
 
     async_add_entities(entities)
@@ -90,7 +82,6 @@ class MahavitranCurrentReadingSensor(MahavitranSensorBase):
 
     @property
     def state_class(self):
-        # This is the cumulative meter! This is the ONLY sensor the HA Energy Dashboard actually needs.
         return SensorStateClass.TOTAL_INCREASING
 
     @property
@@ -123,7 +114,6 @@ class MahavitranCumulativeHourlySensor(MahavitranSensorBase):
 
     @property
     def state_class(self):
-        # TOTAL_INCREASING allows HA to track this cumulatively even when it resets to 0 at midnight
         return SensorStateClass.TOTAL_INCREASING
 
     @property
@@ -139,7 +129,6 @@ class MahavitranCumulativeHourlySensor(MahavitranSensorBase):
         if self.coordinator.data and "hourly_consumption" in self.coordinator.data:
             hourly_list = self.coordinator.data["hourly_consumption"]
             if isinstance(hourly_list, list):
-                # Format as a clean dictionary: {"00:00": 0.5, "01:00": 0.8, ...}
                 breakdown = {}
                 for entry in hourly_list:
                     hour = entry.get("HOUR", "00")
@@ -185,7 +174,6 @@ class MahavitranHourlyExportSensor(MahavitranSensorBase):
         if self.coordinator.data and "hourly_consumption" in self.coordinator.data:
             hourly_list = self.coordinator.data["hourly_consumption"]
             if isinstance(hourly_list, list):
-                # Format as a clean dictionary: {"00:00": 0.5, "01:00": 0.8, ...}
                 breakdown = {}
                 for entry in hourly_list:
                     hour = entry.get("HOUR", "00")
@@ -198,218 +186,3 @@ class MahavitranHourlyExportSensor(MahavitranSensorBase):
     def unit_of_measurement(self):
         return "kWh"
 
-
-class MahavitranImportHistoricalSensor(MahavitranSensorBase):
-    """Sensor for Mahavitran Import Historical Data (Dashboard)."""
-
-    @property
-    def unique_id(self):
-        return f"mahavitran_{self._consumer_no}_import_historical_sensor"
-
-    @property
-    def name(self):
-        return "Mahavitran Import Historical (Dashboard)"
-
-    @property
-    def device_class(self):
-        return SensorDeviceClass.ENERGY
-
-    @property
-    def state_class(self):
-        return SensorStateClass.TOTAL_INCREASING
-
-    @property
-    def state(self):
-        # Return 0.0 instead of None to prevent 'Unknown' state in HA.
-        # Since this value never increases, HA's native compiler records 0 usage.
-        # This allows our backdated async_import_statistics to have 100% control
-        # over the actual hourly consumption shown in the Energy Dashboard!
-        return 0.0
-
-    @property
-    def unit_of_measurement(self):
-        return "kWh"
-
-    def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
-        super()._handle_coordinator_update()
-        if hasattr(self.hass, "async_create_task"):
-            self.hass.async_create_task(self._async_inject_historical_statistics())
-
-    async def _async_inject_historical_statistics(self):
-        """Inject historical statistics directly into the recorder database."""
-        if not self.entity_id or not self.hass:
-            return
-            
-        if not self.coordinator.data or "hourly_consumption" not in self.coordinator.data:
-            return
-            
-        hourly_list = self.coordinator.data["hourly_consumption"]
-        if not isinstance(hourly_list, list) or not hourly_list:
-            return
-            
-        metadata = StatisticMetaData(
-            has_mean=False,
-            has_sum=True,
-            name=self.name,
-            source="recorder",
-            statistic_id=self.entity_id,
-            unit_of_measurement="kWh",
-        )
-        
-        now = dt_util.now()
-        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        
-        # Fetch the lifetime cumulative sum exactly at the end of yesterday
-        stat_history = await self.hass.async_add_executor_job(
-            statistics_during_period,
-            self.hass,
-            today_start - timedelta(days=30),
-            today_start,
-            {self.entity_id},
-            "hour",
-            None,
-            {"sum"}
-        )
-        
-        base_sum = 0.0
-        if stat_history and self.entity_id in stat_history and stat_history[self.entity_id]:
-            last_stat = stat_history[self.entity_id][-1]
-            if "sum" in last_stat and last_stat["sum"] is not None:
-                base_sum = float(last_stat["sum"])
-                
-        running_sum = base_sum
-        statistics = []
-        
-        for entry in hourly_list:
-            hour_str = entry.get("HOUR")
-            if hour_str is None:
-                continue
-                
-            try:
-                hour_int = int(hour_str)
-                val = float(entry.get("UNITS_IMPORTED", entry.get("READING", 0.0)))
-                running_sum += val
-                
-                local_hour = today_start + timedelta(hours=hour_int)
-                utc_hour = dt_util.as_utc(local_hour)
-                start_time = utc_hour.replace(minute=0, second=0, microsecond=0)
-                
-                statistics.append(
-                    StatisticData(
-                        start=start_time,
-                        state=running_sum,
-                        sum=running_sum
-                    )
-                )
-            except (ValueError, TypeError):
-                continue
-                
-        if statistics:
-            async_import_statistics(self.hass, metadata, statistics)
-
-
-class MahavitranExportHistoricalSensor(MahavitranSensorBase):
-    """Sensor for Mahavitran Export Historical Data (Dashboard)."""
-
-    @property
-    def unique_id(self):
-        return f"mahavitran_{self._consumer_no}_export_historical_sensor"
-
-    @property
-    def name(self):
-        return "Mahavitran Export Historical (Dashboard)"
-
-    @property
-    def device_class(self):
-        return SensorDeviceClass.ENERGY
-
-    @property
-    def state_class(self):
-        return SensorStateClass.TOTAL_INCREASING
-
-    @property
-    def state(self):
-        return 0.0
-
-    @property
-    def unit_of_measurement(self):
-        return "kWh"
-
-    def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
-        super()._handle_coordinator_update()
-        if hasattr(self.hass, "async_create_task"):
-            self.hass.async_create_task(self._async_inject_historical_statistics())
-
-    async def _async_inject_historical_statistics(self):
-        """Inject historical statistics directly into the recorder database."""
-        if not self.entity_id or not self.hass:
-            return
-            
-        if not self.coordinator.data or "hourly_consumption" not in self.coordinator.data:
-            return
-            
-        hourly_list = self.coordinator.data["hourly_consumption"]
-        if not isinstance(hourly_list, list) or not hourly_list:
-            return
-            
-        metadata = StatisticMetaData(
-            has_mean=False,
-            has_sum=True,
-            name=self.name,
-            source="recorder",
-            statistic_id=self.entity_id,
-            unit_of_measurement="kWh",
-        )
-        
-        now = dt_util.now()
-        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        
-        # Fetch the lifetime cumulative sum exactly at the end of yesterday
-        stat_history = await self.hass.async_add_executor_job(
-            statistics_during_period,
-            self.hass,
-            today_start - timedelta(days=30),
-            today_start,
-            {self.entity_id},
-            "hour",
-            None,
-            {"sum"}
-        )
-        
-        base_sum = 0.0
-        if stat_history and self.entity_id in stat_history and stat_history[self.entity_id]:
-            last_stat = stat_history[self.entity_id][-1]
-            if "sum" in last_stat and last_stat["sum"] is not None:
-                base_sum = float(last_stat["sum"])
-                
-        running_sum = base_sum
-        statistics = []
-        
-        for entry in hourly_list:
-            hour_str = entry.get("HOUR")
-            if hour_str is None:
-                continue
-                
-            try:
-                hour_int = int(hour_str)
-                val = float(entry.get("UNITS_EXPORTED", 0.0))
-                running_sum += val
-                
-                local_hour = today_start + timedelta(hours=hour_int)
-                utc_hour = dt_util.as_utc(local_hour)
-                start_time = utc_hour.replace(minute=0, second=0, microsecond=0)
-                
-                statistics.append(
-                    StatisticData(
-                        start=start_time,
-                        state=running_sum,
-                        sum=running_sum
-                    )
-                )
-            except (ValueError, TypeError):
-                continue
-                
-        if statistics:
-            async_import_statistics(self.hass, metadata, statistics)

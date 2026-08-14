@@ -103,6 +103,26 @@ class MahavitranApiClient:
             "Content-Type": "application/json"
         }
 
+    async def async_get_hourly_consumption_for_date(self, date_str: str) -> List[Dict[str, Any]]:
+        """Fetch hourly consumption for a specific yyyyMMdd date."""
+        if not self.consumer_no or not self.amisp_code:
+            return []
+        try:
+            url = f"{SMART_METER_URL}/{self.amisp_code}/GetHourlyConsumption/{self.consumer_no}/{date_str}"
+            async with self._session.get(
+                url,
+                auth=self._get_basic_auth(),
+                headers=self._get_smart_meter_headers(),
+                timeout=10
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    if isinstance(data, list):
+                        return data
+        except Exception as e:
+            _LOGGER.debug(f"Failed to fetch hourly consumption for {date_str}: {e}")
+        return []
+
     async def async_get_smart_meter_data(self) -> Dict[str, Any]:
         """Fetch all relevant smart meter data for the configured consumer."""
         if not self.consumer_no or not self.amisp_code:
@@ -111,6 +131,7 @@ class MahavitranApiClient:
         result_data = {
             "status": "Connected",
             "current_reading": None,
+            "days_data": [],
         }
 
         # 1. Fetch Current Reading
@@ -134,35 +155,38 @@ class MahavitranApiClient:
             _LOGGER.debug(f"Failed to fetch Current Reading: {e}")
             result_data["status"] = "Failed"
 
-        # 2. Fetch Hourly Consumption (yyyyMMdd)
+        # 2. Fetch Hourly Consumption for yesterday and today
         try:
-            from datetime import datetime
+            from datetime import datetime, timedelta
             now = datetime.now()
-            hourly_day = now.strftime("%Y%m%d")
-            url = f"{SMART_METER_URL}/{self.amisp_code}/GetHourlyConsumption/{self.consumer_no}/{hourly_day}"
-            async with self._session.get(
-                url,
-                auth=self._get_basic_auth(),
-                headers=self._get_smart_meter_headers(),
-                timeout=10
-            ) as response:
-                if response.status == 200:
-                    hourly_data = await response.json()
-                    result_data["hourly_consumption"] = hourly_data
-                    
-                    # Calculate cumulative totals for today
-                    total_import = 0.0
-                    total_export = 0.0
-                    if isinstance(hourly_data, list):
-                        for entry in hourly_data:
-                            try:
-                                total_import += float(entry.get("UNITS_IMPORTED", entry.get("READING", 0.0)))
-                                total_export += float(entry.get("UNITS_EXPORTED", 0.0))
-                            except (ValueError, TypeError):
-                                pass
-                                
-                    result_data["today_import"] = total_import
-                    result_data["today_export"] = total_export
+            today_str = now.strftime("%Y%m%d")
+            yesterday_str = (now - timedelta(days=1)).strftime("%Y%m%d")
+
+            yesterday_data = await self.async_get_hourly_consumption_for_date(yesterday_str)
+            today_data = await self.async_get_hourly_consumption_for_date(today_str)
+
+            days_data = []
+            if yesterday_data:
+                days_data.append({"date": yesterday_str, "hourly": yesterday_data})
+            if today_data:
+                days_data.append({"date": today_str, "hourly": today_data})
+
+            result_data["days_data"] = days_data
+            result_data["hourly_consumption"] = today_data
+
+            # Calculate cumulative totals for today
+            total_import = 0.0
+            total_export = 0.0
+            if isinstance(today_data, list):
+                for entry in today_data:
+                    try:
+                        total_import += float(entry.get("UNITS_IMPORTED", entry.get("READING", 0.0)))
+                        total_export += float(entry.get("UNITS_EXPORTED", 0.0))
+                    except (ValueError, TypeError):
+                        pass
+                        
+            result_data["today_import"] = total_import
+            result_data["today_export"] = total_export
         except Exception as e:
             _LOGGER.debug(f"Failed to fetch Hourly Consumption: {e}")
             
