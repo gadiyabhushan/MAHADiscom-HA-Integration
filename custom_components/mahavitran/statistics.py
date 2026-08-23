@@ -9,6 +9,7 @@ from homeassistant.components.recorder.models import StatisticData, StatisticMet
 from homeassistant.components.recorder.statistics import (
     async_import_statistics,
     get_last_statistics,
+    StatisticMeanType,
 )
 
 from .const import DOMAIN
@@ -63,11 +64,23 @@ class MahavitranStatisticsManager:
 
     async def async_initialize_metadata(self) -> None:
         """Register the statistic metadata immediately so it appears in the Energy Dashboard dropdown."""
-        import_entity_id = f"sensor.mahavitran_{self.consumer_no}_import_historical_sensor"
-        export_entity_id = f"sensor.mahavitran_{self.consumer_no}_export_historical_sensor"
+        from homeassistant.helpers import entity_registry as er
+        entity_reg = er.async_get(self.hass)
+        
+        # Get actual entity_id from unique_id if it exists in registry (e.g. customized or renamed)
+        import_unique_id = f"mahavitran_{self.consumer_no}_import_historical_sensor"
+        import_entity_id = entity_reg.async_get_entity_id("sensor", DOMAIN, import_unique_id)
+        if not import_entity_id:
+            import_entity_id = f"sensor.mahavitran_{self.consumer_no}_import_historical_sensor"
+
+        export_unique_id = f"mahavitran_{self.consumer_no}_export_historical_sensor"
+        export_entity_id = entity_reg.async_get_entity_id("sensor", DOMAIN, export_unique_id)
+        if not export_entity_id:
+            export_entity_id = f"sensor.mahavitran_{self.consumer_no}_export_historical_sensor"
 
         import_meta = StatisticMetaData(
             has_mean=False,
+            mean_type=StatisticMeanType.NONE,
             has_sum=True,
             name="Mahavitran Import Historical (Dashboard)",
             source="recorder",
@@ -77,6 +90,7 @@ class MahavitranStatisticsManager:
 
         export_meta = StatisticMetaData(
             has_mean=False,
+            mean_type=StatisticMeanType.NONE,
             has_sum=True,
             name="Mahavitran Export Historical (Dashboard)",
             source="recorder",
@@ -101,11 +115,23 @@ class MahavitranStatisticsManager:
         """
         await self._async_load()
 
-        import_entity_id = f"sensor.mahavitran_{self.consumer_no}_import_historical_sensor"
-        export_entity_id = f"sensor.mahavitran_{self.consumer_no}_export_historical_sensor"
+        from homeassistant.helpers import entity_registry as er
+        entity_reg = er.async_get(self.hass)
+        
+        # Get actual entity_id from unique_id if it exists in registry
+        import_unique_id = f"mahavitran_{self.consumer_no}_import_historical_sensor"
+        import_entity_id = entity_reg.async_get_entity_id("sensor", DOMAIN, import_unique_id)
+        if not import_entity_id:
+            import_entity_id = f"sensor.mahavitran_{self.consumer_no}_import_historical_sensor"
+
+        export_unique_id = f"mahavitran_{self.consumer_no}_export_historical_sensor"
+        export_entity_id = entity_reg.async_get_entity_id("sensor", DOMAIN, export_unique_id)
+        if not export_entity_id:
+            export_entity_id = f"sensor.mahavitran_{self.consumer_no}_export_historical_sensor"
 
         import_meta = StatisticMetaData(
             has_mean=False,
+            mean_type=StatisticMeanType.NONE,
             has_sum=True,
             name="Mahavitran Import Historical (Dashboard)",
             source="recorder",
@@ -115,6 +141,7 @@ class MahavitranStatisticsManager:
 
         export_meta = StatisticMetaData(
             has_mean=False,
+            mean_type=StatisticMeanType.NONE,
             has_sum=True,
             name="Mahavitran Export Historical (Dashboard)",
             source="recorder",
@@ -187,7 +214,7 @@ class MahavitranStatisticsManager:
 
                 start_h = (h - 1) if (1 <= h <= 24) else h
                 start_local = datetime(year, month, day, start_h, 0, 0, tzinfo=local_tz)
-                start_utc = dt_util.as_utc(start_local)
+                start_utc = dt_util.as_utc(start_local).replace(minute=0, second=0, microsecond=0)
 
                 import_stats.append(
                     StatisticData(
@@ -208,7 +235,7 @@ class MahavitranStatisticsManager:
 
                 start_h = (h - 1) if (1 <= h <= 24) else h
                 start_local = datetime(year, month, day, start_h, 0, 0, tzinfo=local_tz)
-                start_utc = dt_util.as_utc(start_local)
+                start_utc = dt_util.as_utc(start_local).replace(minute=0, second=0, microsecond=0)
 
                 export_stats.append(
                     StatisticData(

@@ -1,4 +1,10 @@
 
+## v2.1.2
+- **FIXED 4-HOURLY SPIKES**:
+  - Aligned injected UTC timestamps to the top of the hour, resolving the Home Assistant `Invalid timestamp` injection error.
+  - Dynamically look up active entity IDs from Home Assistant's entity registry, resolving mismatches when sensors are customized/renamed in the UI (e.g. adding location prefixes like "Parking").
+  - Fixed database warnings by explicitly specifying `mean_type=StatisticMeanType.NONE` for metadata.
+
 ## v2.1.1
 - **CRITICAL FIX**: Fixed AttributeError on startup by restoring the missing `async_initialize_metadata` method inside the statistics manager.
 
