@@ -48,6 +48,25 @@ class MahavitranStatisticsManager:
         """Persist stats base data."""
         await self._store.async_save(self._data)
 
+    def get_last_sums(self) -> Dict[str, float]:
+        """Return the last computed import and export sums from memory."""
+        import_sum = 0.0
+        export_sum = 0.0
+        
+        # Find the latest date in day_base_sums
+        for kind in ["import", "export"]:
+            dates = sorted(self._data["day_base_sums"][kind].keys())
+            if dates:
+                last_date = dates[-1]
+                base = self._data["day_base_sums"][kind][last_date]
+                total = self._data["day_totals"][kind].get(last_date, 0.0)
+                if kind == "import":
+                    import_sum = base + total
+                else:
+                    export_sum = base + total
+                    
+        return {"import_sum": import_sum, "export_sum": export_sum}
+
     async def _get_initial_seed(self, stat_id: str, default_seed: float = 0.0) -> float:
         """Get the last known statistic sum from recorder if storage is empty."""
         try:
@@ -86,6 +105,7 @@ class MahavitranStatisticsManager:
             source="recorder",
             statistic_id=import_entity_id,
             unit_of_measurement="kWh",
+            unit_class="energy",
         )
 
         export_meta = StatisticMetaData(
@@ -96,6 +116,7 @@ class MahavitranStatisticsManager:
             source="recorder",
             statistic_id=export_entity_id,
             unit_of_measurement="kWh",
+            unit_class="energy",
         )
 
         try:
@@ -137,6 +158,7 @@ class MahavitranStatisticsManager:
             source="recorder",
             statistic_id=import_entity_id,
             unit_of_measurement="kWh",
+            unit_class="energy",
         )
 
         export_meta = StatisticMetaData(
@@ -147,6 +169,7 @@ class MahavitranStatisticsManager:
             source="recorder",
             statistic_id=export_entity_id,
             unit_of_measurement="kWh",
+            unit_class="energy",
         )
 
         if not days_data:

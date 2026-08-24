@@ -1,4 +1,10 @@
 
+## v2.1.3
+- **FIXED RESET SPIKES AND DEPRECATION WARNINGS**:
+  - Removed raw `current_reading` fallback from historical dashboard sensors, preventing state reset spikes during API glitches.
+  - Retain the last computed sums when the API fails to return daily hourly data.
+  - Specified `unit_class="energy"` in statistic metadata to fix the HA 2026.11 deprecation warning.
+
 ## v2.1.2
 - **FIXED 4-HOURLY SPIKES**:
   - Aligned injected UTC timestamps to the top of the hour, resolving the Home Assistant `Invalid timestamp` injection error.

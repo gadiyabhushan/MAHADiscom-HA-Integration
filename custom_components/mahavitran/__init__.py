@@ -53,6 +53,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     data["cumulative_export_sum"] = sums.get("export_sum", 0.0)
                 except Exception as ex:
                     _LOGGER.error("Failed to inject historical statistics: %s", ex, exc_info=True)
+            else:
+                # If daily data is empty due to API timeout/glitch, fallback to last computed sums to preserve state
+                sums = stats_manager.get_last_sums()
+                if data is None:
+                    data = {}
+                data["cumulative_import_sum"] = sums.get("import_sum", 0.0)
+                data["cumulative_export_sum"] = sums.get("export_sum", 0.0)
             return data
         except Exception as err:
             raise UpdateFailed(f"Error communicating with API: {err}")

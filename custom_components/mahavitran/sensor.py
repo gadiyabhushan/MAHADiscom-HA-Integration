@@ -214,10 +214,6 @@ class MahavitranImportHistoricalSensor(MahavitranSensorBase):
             val = self.coordinator.data["cumulative_import_sum"]
             if val is not None and val > 0:
                 return round(val, 2)
-        if self.coordinator.data and self.coordinator.data.get("current_reading"):
-            reading_data = self.coordinator.data["current_reading"]
-            if isinstance(reading_data, dict):
-                return reading_data.get("READING")
         return None
 
     @property
@@ -250,7 +246,7 @@ class MahavitranExportHistoricalSensor(MahavitranSensorBase):
             val = self.coordinator.data["cumulative_export_sum"]
             if val is not None:
                 return round(val, 2)
-        return 0.0
+        return None
 
     @property
     def unit_of_measurement(self):
