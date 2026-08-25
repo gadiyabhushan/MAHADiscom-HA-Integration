@@ -1,4 +1,10 @@
 
+## v2.1.4
+- **STRICT MONOTONIC NON-DECREASING GUARD**:
+  - Implemented monotonic upper bounds (`max_sums` and non-decreasing `day_totals`) in the statistics manager.
+  - Guarantees historical sensor states and daily totals NEVER decrease even if Mahavitran API temporarily returns partial hourly payloads during server processing.
+  - Prevents false meter reset triggers, state drops, and negative import calculations.
+
 ## v2.1.3
 - **FIXED RESET SPIKES AND DEPRECATION WARNINGS**:
   - Removed raw `current_reading` fallback from historical dashboard sensors, preventing state reset spikes during API glitches.

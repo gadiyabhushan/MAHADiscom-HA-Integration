@@ -30,6 +30,7 @@ class MahavitranStatisticsManager:
         self._data: Dict[str, Any] = {
             "day_base_sums": {"import": {}, "export": {}},
             "day_totals": {"import": {}, "export": {}},
+            "max_sums": {"import": 0.0, "export": 0.0},
         }
         self._loaded = False
 
@@ -42,6 +43,8 @@ class MahavitranStatisticsManager:
                 self._data["day_base_sums"]["export"].update(stored.get("day_base_sums", {}).get("export", {}))
                 self._data["day_totals"]["import"].update(stored.get("day_totals", {}).get("import", {}))
                 self._data["day_totals"]["export"].update(stored.get("day_totals", {}).get("export", {}))
+                if "max_sums" in stored and isinstance(stored["max_sums"], dict):
+                    self._data["max_sums"].update(stored["max_sums"])
             self._loaded = True
 
     async def _async_save(self) -> None:
@@ -50,20 +53,22 @@ class MahavitranStatisticsManager:
 
     def get_last_sums(self) -> Dict[str, float]:
         """Return the last computed import and export sums from memory."""
-        import_sum = 0.0
-        export_sum = 0.0
+        self._data.setdefault("max_sums", {"import": 0.0, "export": 0.0})
+        import_sum = self._data["max_sums"].get("import", 0.0)
+        export_sum = self._data["max_sums"].get("export", 0.0)
         
-        # Find the latest date in day_base_sums
+        # Fallback to day_base_sums + day_totals if max_sums is 0.0
         for kind in ["import", "export"]:
             dates = sorted(self._data["day_base_sums"][kind].keys())
             if dates:
                 last_date = dates[-1]
                 base = self._data["day_base_sums"][kind][last_date]
                 total = self._data["day_totals"][kind].get(last_date, 0.0)
+                calculated = base + total
                 if kind == "import":
-                    import_sum = base + total
+                    import_sum = max(import_sum, calculated)
                 else:
-                    export_sum = base + total
+                    export_sum = max(export_sum, calculated)
                     
         return {"import_sum": import_sum, "export_sum": export_sum}
 
@@ -246,7 +251,8 @@ class MahavitranStatisticsManager:
                         sum=round(imp_running, 4),
                     )
                 )
-            self._data["day_totals"]["import"][date_str] = imp_day_total
+            prev_imp_total = self._data["day_totals"]["import"].get(date_str, 0.0)
+            self._data["day_totals"]["import"][date_str] = max(prev_imp_total, imp_day_total)
             last_import_sum = imp_running
 
             # Process Export statistics
@@ -267,8 +273,23 @@ class MahavitranStatisticsManager:
                         sum=round(exp_running, 4),
                     )
                 )
-            self._data["day_totals"]["export"][date_str] = exp_day_total
+            prev_exp_total = self._data["day_totals"]["export"].get(date_str, 0.0)
+            self._data["day_totals"]["export"][date_str] = max(prev_exp_total, exp_day_total)
             last_export_sum = exp_running
+
+        # Enforce strict monotonic non-decreasing bounds on cumulative sums
+        self._data.setdefault("max_sums", {"import": 0.0, "export": 0.0})
+        if last_import_sum > 0:
+            last_import_sum = max(self._data["max_sums"].get("import", 0.0), last_import_sum)
+            self._data["max_sums"]["import"] = last_import_sum
+        else:
+            last_import_sum = self._data["max_sums"].get("import", 0.0)
+
+        if last_export_sum > 0:
+            last_export_sum = max(self._data["max_sums"].get("export", 0.0), last_export_sum)
+            self._data["max_sums"]["export"] = last_export_sum
+        else:
+            last_export_sum = self._data["max_sums"].get("export", 0.0)
 
         # Save base sums for future updates
         await self._async_save()
