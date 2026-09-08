@@ -1,7 +1,7 @@
 {
     "domain": "mahavitran",
     "name": "Mahavitran Smart Meter",
-    "version": "2.1.4",
+    "version": "2.1.5",
     "codeowners": [
         "@gadiyabhushan"
     ],

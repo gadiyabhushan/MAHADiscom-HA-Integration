@@ -233,49 +233,72 @@ class MahavitranStatisticsManager:
 
             parsed_hours.sort(key=lambda x: x[0])
 
-            # Process Import statistics
+            # Initialize hourly_cache dict for date_str if missing
+            self._data.setdefault("hourly_cache", {})
+            self._data["hourly_cache"].setdefault(date_str, {"import": {}, "export": {}})
+            day_cache = self._data["hourly_cache"][date_str]
+
+            # 1. Process Import statistics
             imp_running = self._data["day_base_sums"]["import"][date_str]
             imp_day_total = 0.0
             for h, imp_val, _ in parsed_hours:
                 imp_running += imp_val
                 imp_day_total += imp_val
 
-                start_h = (h - 1) if (1 <= h <= 24) else h
+                # Monotonic upper bound per hour
+                prev_hour_sum = day_cache["import"].get(str(h), 0.0)
+                cached_sum = max(prev_hour_sum, imp_running)
+                day_cache["import"][str(h)] = cached_sum
+
+            prev_imp_total = self._data["day_totals"]["import"].get(date_str, 0.0)
+            self._data["day_totals"]["import"][date_str] = max(prev_imp_total, imp_day_total)
+
+            # Build import_stats from all cached hours for date_str in order
+            for h_str in sorted(day_cache["import"].keys(), key=lambda x: int(x)):
+                h_int = int(h_str)
+                cached_val = day_cache["import"][h_str]
+                start_h = (h_int - 1) if (1 <= h_int <= 24) else h_int
                 start_local = datetime(year, month, day, start_h, 0, 0, tzinfo=local_tz)
                 start_utc = dt_util.as_utc(start_local).replace(minute=0, second=0, microsecond=0)
-
                 import_stats.append(
                     StatisticData(
                         start=start_utc,
-                        state=round(imp_running, 4),
-                        sum=round(imp_running, 4),
+                        state=round(cached_val, 4),
+                        sum=round(cached_val, 4),
                     )
                 )
-            prev_imp_total = self._data["day_totals"]["import"].get(date_str, 0.0)
-            self._data["day_totals"]["import"][date_str] = max(prev_imp_total, imp_day_total)
-            last_import_sum = imp_running
+                last_import_sum = max(last_import_sum, cached_val)
 
-            # Process Export statistics
+            # 2. Process Export statistics
             exp_running = self._data["day_base_sums"]["export"][date_str]
             exp_day_total = 0.0
             for h, _, exp_val in parsed_hours:
                 exp_running += exp_val
                 exp_day_total += exp_val
 
-                start_h = (h - 1) if (1 <= h <= 24) else h
+                # Monotonic upper bound per hour
+                prev_hour_sum = day_cache["export"].get(str(h), 0.0)
+                cached_sum = max(prev_hour_sum, exp_running)
+                day_cache["export"][str(h)] = cached_sum
+
+            prev_exp_total = self._data["day_totals"]["export"].get(date_str, 0.0)
+            self._data["day_totals"]["export"][date_str] = max(prev_exp_total, exp_day_total)
+
+            # Build export_stats from all cached hours for date_str in order
+            for h_str in sorted(day_cache["export"].keys(), key=lambda x: int(x)):
+                h_int = int(h_str)
+                cached_val = day_cache["export"][h_str]
+                start_h = (h_int - 1) if (1 <= h_int <= 24) else h_int
                 start_local = datetime(year, month, day, start_h, 0, 0, tzinfo=local_tz)
                 start_utc = dt_util.as_utc(start_local).replace(minute=0, second=0, microsecond=0)
-
                 export_stats.append(
                     StatisticData(
                         start=start_utc,
-                        state=round(exp_running, 4),
-                        sum=round(exp_running, 4),
+                        state=round(cached_val, 4),
+                        sum=round(cached_val, 4),
                     )
                 )
-            prev_exp_total = self._data["day_totals"]["export"].get(date_str, 0.0)
-            self._data["day_totals"]["export"][date_str] = max(prev_exp_total, exp_day_total)
-            last_export_sum = exp_running
+                last_export_sum = max(last_export_sum, cached_val)
 
         # Enforce strict monotonic non-decreasing bounds on cumulative sums
         self._data.setdefault("max_sums", {"import": 0.0, "export": 0.0})

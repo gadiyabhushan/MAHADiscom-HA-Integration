@@ -1,4 +1,10 @@
 
+## v2.1.5
+- **PER-HOUR MONOTONIC CACHED INJECTION**:
+  - Maintained persistent `hourly_cache` per day to preserve all injected hourly statistics.
+  - Ensures injected `StatisticData` list NEVER shrinks and hourly sums NEVER decrease if Mahavitran API temporarily returns partial hourly payloads.
+  - Fixes Home Assistant recorder daemon state reset drops and giant negative import spikes.
+
 ## v2.1.4
 - **STRICT MONOTONIC NON-DECREASING GUARD**:
   - Implemented monotonic upper bounds (`max_sums` and non-decreasing `day_totals`) in the statistics manager.
